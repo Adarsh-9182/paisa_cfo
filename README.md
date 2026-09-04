@@ -18,6 +18,19 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Testing
+
+```bash
+npm test
+```
+
+Runs the eval suite (`scripts/run-evals.ts`) against the ledger core, the auto-booking engine, and all four agents — the accuracy-over-time loop that replaces "trust the demo."
+
 ## Status
 
-Early scaffold: ledger core, ingestion pipeline, and agent base classes are in place with a smoke test (`scripts/smoke.ts`) proving balance enforcement and idempotency. UI, persistence, connectors, and per-workflow agents are not yet built.
+- **Ledger core** — immutable, idempotent double-entry bookkeeping.
+- **Ingestion** — keyword-based auto-booking engine (`Categorizer` + `BankBookingEngine`); confident matches post, everything else becomes a proposal.
+- **AI agents** — accrual, flux analysis, reconciliation, and revenue recognition. All propose, none post directly.
+- **Eval suite** — 6 regression cases covering the above, run via `npm test`.
+
+Not yet built: UI, persistence, real connectors (Stripe/Plaid/etc.), tenancy, enterprise credibility (audit trail, SSO, SOC2 posture).
