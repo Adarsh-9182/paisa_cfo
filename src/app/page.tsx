@@ -3,7 +3,10 @@ import { buildDemoBooks } from "@/demo/books";
 import { snapshot, closeChecklist } from "@/metrics";
 import { answerQuestion } from "@/ai/tools";
 import { readUserCommands } from "./session";
-import { money } from "./ui";
+import { Card, Metric, MetricRow, SectionLabel, money } from "./ui";
+
+const PERIOD = { start: "2026-09-01", end: "2026-09-30" };
+const PRIOR = { start: "2026-08-01", end: "2026-08-31" };
 
 const SUGGESTIONS = [
   "What is left on my close?",
@@ -11,9 +14,6 @@ const SUGGESTIONS = [
   "What is pending approval?",
   "How much moved through payroll this period?",
 ];
-
-const PERIOD = { start: "2026-09-01", end: "2026-09-30" };
-const PRIOR = { start: "2026-08-01", end: "2026-08-31" };
 
 const PINNED_REPORTS = [
   { label: "Profit and loss", href: "/reports" },
@@ -63,15 +63,18 @@ export default async function OverviewPage(props: PageProps<"/">) {
   ];
 
   return (
-    <div className="space-y-10">
-      <section className="pt-2">
-        <h1 className="text-center text-[15px] font-semibold tracking-tight text-zinc-200">
+    <div className="space-y-9">
+      <section>
+        <h1 className="text-center text-[22px] font-semibold tracking-tight text-zinc-900">
           Close September, then rest.
         </h1>
+        <p className="mt-1 text-center text-[13px] text-zinc-500">
+          Ask the books a question, or work through what needs you below.
+        </p>
 
-        <form method="GET" className="mx-auto mt-3 max-w-xl">
-          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 focus-within:border-white/25">
-            <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-emerald-400/80 text-[9px] font-bold text-black">
+        <form method="GET" className="mx-auto mt-5 max-w-2xl">
+          <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100">
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">
               P
             </span>
             <input
@@ -79,11 +82,11 @@ export default async function OverviewPage(props: PageProps<"/">) {
               name="q"
               defaultValue={question}
               placeholder="Ask anything about these books…"
-              className="flex-1 bg-transparent text-[12.5px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
+              className="flex-1 bg-transparent text-[14px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
             />
             <button
               type="submit"
-              className="shrink-0 rounded-full bg-white/8 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-white/15"
+              className="shrink-0 rounded-lg bg-zinc-900 px-3.5 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-zinc-700"
             >
               Ask
             </button>
@@ -91,21 +94,19 @@ export default async function OverviewPage(props: PageProps<"/">) {
         </form>
 
         {answer ? (
-          <div className="mx-auto mt-3 max-w-xl rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+          <Card className="mx-auto mt-4 max-w-2xl px-5 py-4">
             {answer.result ? (
               <>
-                <p className="text-[12.5px] leading-relaxed text-zinc-200">
-                  {answer.result.answer}
-                </p>
+                <p className="text-[14px] leading-relaxed text-zinc-900">{answer.result.answer}</p>
                 {answer.result.citations.length > 0 && (
-                  <div className="mt-2.5 border-t border-white/8 pt-2">
-                    <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">
+                  <div className="mt-3.5 border-t border-zinc-100 pt-3">
+                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-zinc-400">
                       Computed from
                     </div>
-                    <ul className="space-y-0.5">
+                    <ul className="space-y-1">
                       {answer.result.citations.map((c) => (
-                        <li key={c.entryId} className="flex gap-2 text-[11px] text-zinc-500">
-                          <span className="font-mono text-[10px] text-zinc-700">
+                        <li key={c.entryId} className="flex gap-2.5 text-[12.5px] text-zinc-600">
+                          <span className="num text-[11px] text-zinc-400">
                             {c.entryId.slice(0, 8)}
                           </span>
                           <span className="truncate">{c.label}</span>
@@ -114,21 +115,21 @@ export default async function OverviewPage(props: PageProps<"/">) {
                     </ul>
                   </div>
                 )}
-                <div className="mt-2 font-mono text-[10px] text-zinc-700">
+                <div className="num mt-3 text-[11px] text-zinc-400">
                   answered by {answer.tool}
                 </div>
               </>
             ) : (
-              <p className="text-[12.5px] leading-relaxed text-zinc-500">{answer.refusal}</p>
+              <p className="text-[13.5px] leading-relaxed text-zinc-500">{answer.refusal}</p>
             )}
-          </div>
+          </Card>
         ) : (
-          <div className="mx-auto mt-2.5 flex max-w-xl flex-wrap justify-center gap-1.5">
+          <div className="mx-auto mt-3 flex max-w-2xl flex-wrap justify-center gap-2">
             {SUGGESTIONS.map((s) => (
               <Link
                 key={s}
                 href={`/?q=${encodeURIComponent(s)}`}
-                className="rounded-full border border-white/8 px-2.5 py-1 text-[11px] text-zinc-600 transition-colors hover:border-white/20 hover:text-zinc-400"
+                className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[12.5px] text-zinc-600 transition-colors hover:border-zinc-300 hover:text-zinc-900"
               >
                 {s}
               </Link>
@@ -139,141 +140,106 @@ export default async function OverviewPage(props: PageProps<"/">) {
 
       <section>
         <SectionLabel>Snapshot</SectionLabel>
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/10 bg-white/8 lg:grid-cols-4">
-          <Tile label="Cash balance" value={money(snap.cash)} delta={snap.cashChange} />
-          <Tile label="Revenue" value={money(snap.revenue)} delta={snap.revenueChange} />
-          <Tile label="Gross burn" value={money(snap.grossBurn)}>
+        <MetricRow>
+          <Metric label="Cash balance" value={money(snap.cash)} delta={snap.cashChange} />
+          <Metric label="Revenue" value={money(snap.revenue)} delta={snap.revenueChange} />
+          <Metric label="Gross burn" value={money(snap.grossBurn)}>
             cash out this period
-          </Tile>
-          <Tile
+          </Metric>
+          <Metric
             label="Runway"
-            value={snap.runwayMonths === null ? "Cash positive" : `${snap.runwayMonths.toFixed(0)} months`}
+            value={snap.runwayMonths === null ? "Cash positive" : `${snap.runwayMonths.toFixed(0)} mo`}
           >
             {snap.runwayMonths === null
               ? `net ${money(-snap.netBurn)} added`
               : `at ${money(snap.netBurn)} a month`}
-          </Tile>
-        </div>
-        <p className="mt-1.5 text-[10px] text-zinc-700">
-          As of {PERIOD.end}. Compared with the period ending {PRIOR.end}.
+          </Metric>
+        </MetricRow>
+        <p className="mt-2 text-[12px] text-zinc-400">
+          As of {PERIOD.end}, compared with the period ending {PRIOR.end}.
         </p>
       </section>
 
-      <div className="grid gap-8 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3">
         <section>
           <SectionLabel>Needs action</SectionLabel>
-          <ul className="overflow-hidden rounded-xl border border-white/10">
+          <Card className="divide-y divide-zinc-100 overflow-hidden">
             {needsAction.map((item) => (
-              <li key={item.label} className="border-b border-white/5 last:border-0">
-                <Link
-                  href={item.href}
-                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-[12px] transition-colors hover:bg-white/[0.03]"
+              <Link
+                key={item.label}
+                href={item.href}
+                className="flex items-center justify-between gap-3 px-4 py-3 text-[13px] transition-colors hover:bg-zinc-50"
+              >
+                <span className="text-zinc-700">{item.label}</span>
+                <span
+                  className={`num rounded-md px-1.5 py-0.5 text-[12px] font-semibold ${
+                    item.count > 0 ? "bg-amber-50 text-amber-700" : "bg-zinc-100 text-zinc-400"
+                  }`}
                 >
-                  <span className="text-zinc-400">{item.label}</span>
-                  <span
-                    className={`font-mono tabular-nums ${
-                      item.count > 0 ? "text-amber-300" : "text-zinc-600"
-                    }`}
-                  >
-                    {item.count}
-                  </span>
-                </Link>
-              </li>
+                  {item.count}
+                </span>
+              </Link>
             ))}
-          </ul>
+          </Card>
         </section>
 
         <section>
           <SectionLabel>
             Close checklist
-            <span className="ml-2 font-mono text-[10px] text-zinc-600">
-              {done} / {checklist.length}
+            <span className="num ml-2 font-normal text-zinc-400">
+              {done} of {checklist.length}
             </span>
           </SectionLabel>
-          <div className="overflow-hidden rounded-xl border border-white/10">
-            <div className="h-1 bg-white/5">
+          <Card className="overflow-hidden">
+            <div className="h-1.5 bg-zinc-100">
               <div
-                className="h-full bg-emerald-400/70"
+                className="h-full rounded-r-full bg-emerald-500 transition-all"
                 style={{ width: `${(done / checklist.length) * 100}%` }}
               />
             </div>
-            <ul>
+            <ul className="divide-y divide-zinc-100">
               {checklist.map((item) => (
-                <li
-                  key={item.label}
-                  className="flex items-start gap-2.5 border-b border-white/5 px-3 py-2.5 text-[12px] last:border-0"
-                >
+                <li key={item.label} className="flex items-start gap-3 px-4 py-3">
                   <span
-                    className={`mt-[3px] grid h-3 w-3 shrink-0 place-items-center rounded-full text-[8px] ${
-                      item.done ? "bg-emerald-400 text-black" : "border border-white/20"
+                    className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold ${
+                      item.done
+                        ? "bg-emerald-500 text-white"
+                        : "border border-zinc-300 bg-white text-transparent"
                     }`}
                   >
-                    {item.done ? "✓" : ""}
+                    ✓
                   </span>
                   <span className="min-w-0">
-                    <span className={item.done ? "text-zinc-500" : "text-zinc-300"}>
+                    <span
+                      className={`block text-[13px] ${
+                        item.done ? "text-zinc-400 line-through" : "font-medium text-zinc-800"
+                      }`}
+                    >
                       {item.label}
                     </span>
-                    <span className="block text-[10px] text-zinc-600">{item.detail}</span>
+                    <span className="block text-[12px] text-zinc-500">{item.detail}</span>
                   </span>
                 </li>
               ))}
             </ul>
-          </div>
+          </Card>
         </section>
 
         <section>
           <SectionLabel>Reports</SectionLabel>
-          <ul className="overflow-hidden rounded-xl border border-white/10">
+          <Card className="divide-y divide-zinc-100 overflow-hidden">
             {PINNED_REPORTS.map((report) => (
-              <li key={report.label} className="border-b border-white/5 last:border-0">
-                <Link
-                  href={report.href}
-                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-[12px] text-zinc-400 transition-colors hover:bg-white/[0.03] hover:text-zinc-200"
-                >
-                  {report.label}
-                  <span className="text-zinc-700">→</span>
-                </Link>
-              </li>
+              <Link
+                key={report.label}
+                href={report.href}
+                className="flex items-center justify-between gap-3 px-4 py-3 text-[13px] text-zinc-700 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+              >
+                {report.label}
+                <span className="text-zinc-300">→</span>
+              </Link>
             ))}
-          </ul>
+          </Card>
         </section>
-      </div>
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="mb-2.5 text-[10px] uppercase tracking-wider text-zinc-500">{children}</h2>
-  );
-}
-
-function Tile({
-  label,
-  value,
-  delta,
-  children,
-}: {
-  label: string;
-  value: string;
-  delta?: number;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="bg-[#08090b] px-4 py-3.5">
-      <div className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</div>
-      <div className="mt-1 font-mono text-[19px] tabular-nums tracking-tight text-zinc-50">
-        {value}
-      </div>
-      <div className="mt-0.5 text-[11px] text-zinc-600">
-        {delta !== undefined ? (
-          <span className={delta >= 0 ? "text-emerald-400/80" : "text-red-400/80"}>
-            {delta >= 0 ? "▲" : "▼"} {money(Math.abs(delta))}
-          </span>
-        ) : (
-          children
-        )}
       </div>
     </div>
   );
