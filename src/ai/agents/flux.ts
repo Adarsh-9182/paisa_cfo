@@ -58,6 +58,7 @@ export class FluxAgent extends Agent {
           proposals.push(
             proposal(
               this.name,
+              `flux:${accountId}:${this.currentPeriod.start}`,
               `${account.name} has ${formatAmount(current)} of activity with no prior-period baseline to compare against`,
               [],
               1
@@ -73,6 +74,7 @@ export class FluxAgent extends Agent {
         proposals.push(
           proposal(
             this.name,
+            `flux:${accountId}:${this.currentPeriod.start}`,
             `${account.name} moved ${formatSignedAmount(change)} (${(pctChange * 100).toFixed(1)}%) versus the prior period`,
             [],
             Math.min(pctChange, 1)

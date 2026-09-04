@@ -34,6 +34,7 @@ export class AccrualAgent extends Agent {
       proposals.push(
         proposal(
           this.name,
+          `accrual:${item.memo}:${this.periodStart}`,
           `Missing recurring expense "${item.memo}" for ${this.periodStart}..${this.periodEnd}; propose accrual of ${formatAmount(item.expectedAmount)}`,
           [
             { accountId: item.expenseAccountId, debit: item.expectedAmount, credit: 0 },

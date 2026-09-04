@@ -1,4 +1,5 @@
-import { Books } from "../books";
+import { Books, type ProposalDisposition } from "../books";
+import type { Command } from "../persistence/commands";
 import type { Ledger } from "../ledger/ledger";
 import type { Account } from "../ledger/types";
 import { BankBookingEngine, type BankLine, type BankBookingResult } from "../ingestion/bank";
@@ -52,11 +53,19 @@ export interface DemoBooks {
   bookings: BankBookingResult[];
   autoBookRate: number;
   proposals: AgentProposal[];
+  dispositions: Record<string, ProposalDisposition>;
+  rejected: Array<{ command: Command; reason: string }>;
   trialBalance: Array<{ account: Account; debit: number; credit: number }>;
   totals: { debits: number; credits: number };
 }
 
-export function buildDemoBooks(): DemoBooks {
+/**
+ * The seed is deterministic, so a caller only has to carry the decisions a
+ * human made — the whole of the rest of the state is rebuilt from scratch on
+ * every request. That is the command log paying for itself: persisting a
+ * handful of approvals is enough to persist the books.
+ */
+export function buildDemoBooks(userCommands: Command[] = []): DemoBooks {
   const seededAt = "2026-09-01T00:00:00.000Z";
   const books = new Books(CHART_OF_ACCOUNTS);
   const ledger = books.books;
@@ -97,6 +106,19 @@ export function buildDemoBooks(): DemoBooks {
   const bookings = BANK_LINES.map((line) =>
     books.recordBankDecision(engine.decide(line), "auto-booking", seededAt)
   );
+
+  // Decisions a human made, replayed on top of the seed. A command that no
+  // longer applies — a stale approval for a proposal the books have moved past
+  // — is collected rather than thrown, because one bad entry in a saved log
+  // should not take down the page that would let someone clear it.
+  const rejected: Array<{ command: Command; reason: string }> = [];
+  for (const command of userCommands) {
+    try {
+      books.exec(command);
+    } catch (error) {
+      rejected.push({ command, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
 
   const september = { start: "2026-09-01", end: "2026-09-30" };
   const august = { start: "2026-08-01", end: "2026-08-31" };
@@ -176,6 +198,8 @@ export function buildDemoBooks(): DemoBooks {
     bookings,
     autoBookRate: autoBookRate(bookings),
     proposals,
+    dispositions: books.allDispositions(),
+    rejected,
     trialBalance,
     totals,
   };

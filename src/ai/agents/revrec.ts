@@ -38,6 +38,7 @@ export class RevRecAgent extends Agent {
       proposals.push(
         proposal(
           this.name,
+          `revrec:${schedule.contractId}:${this.targetPeriod}`,
           `Recognize ${formatAmount(amount)} of deferred revenue for contract ${schedule.contractId}, period ${this.targetPeriod}`,
           [
             { accountId: schedule.deferredRevenueAccountId, debit: amount, credit: 0 },

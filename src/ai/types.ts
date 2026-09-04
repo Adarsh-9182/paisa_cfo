@@ -9,5 +9,4 @@ export interface AgentProposal {
   suggestedLines: JournalLine[];
   confidence: number;
   status: ProposalStatus;
-  createdAt: string;
 }

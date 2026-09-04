@@ -53,6 +53,10 @@ export class Books {
     return this.dispositions.get(proposalId);
   }
 
+  allDispositions(): Record<string, ProposalDisposition> {
+    return Object.fromEntries(this.dispositions);
+  }
+
   exec(command: Command) {
     // An advisory proposal carries no lines. Zero debits equal zero credits,
     // so the ledger would accept it as "balanced" and record an entry that
