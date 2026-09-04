@@ -1,4 +1,5 @@
 import { Ledger } from "../../ledger/ledger";
+import type { Account } from "../../ledger/types";
 import { Categorizer } from "../../ingestion/categorize";
 import { BankBookingEngine, type BankLine } from "../../ingestion/bank";
 import { autoBookRate } from "../../ingestion/stats";
@@ -14,15 +15,19 @@ function expect(condition: boolean, message: string) {
   return { passed: condition, message: condition ? undefined : message };
 }
 
+const DEMO_ACCOUNTS: Account[] = [
+  { id: "cash", code: "1000", name: "Cash", type: "asset" },
+  { id: "revenue", code: "4000", name: "Revenue", type: "revenue" },
+  { id: "rent-expense", code: "5200", name: "Rent Expense", type: "expense" },
+  { id: "accrued-liabilities", code: "2100", name: "Accrued Liabilities", type: "liability" },
+  { id: "deferred-revenue", code: "2200", name: "Deferred Revenue", type: "liability" },
+  { id: "aws-expense", code: "5100", name: "Cloud Hosting", type: "expense" },
+  { id: "accounts-receivable", code: "1100", name: "Accounts Receivable", type: "asset" },
+];
+
 function baseLedger(): Ledger {
   const ledger = new Ledger();
-  ledger.addAccount({ id: "cash", code: "1000", name: "Cash", type: "asset" });
-  ledger.addAccount({ id: "revenue", code: "4000", name: "Revenue", type: "revenue" });
-  ledger.addAccount({ id: "rent-expense", code: "5200", name: "Rent Expense", type: "expense" });
-  ledger.addAccount({ id: "accrued-liabilities", code: "2100", name: "Accrued Liabilities", type: "liability" });
-  ledger.addAccount({ id: "deferred-revenue", code: "2200", name: "Deferred Revenue", type: "liability" });
-  ledger.addAccount({ id: "aws-expense", code: "5100", name: "Cloud Hosting", type: "expense" });
-  ledger.addAccount({ id: "accounts-receivable", code: "1100", name: "Accounts Receivable", type: "asset" });
+  for (const account of DEMO_ACCOUNTS) ledger.addAccount(account);
   return ledger;
 }
 
@@ -62,26 +67,36 @@ export const evalCases: EvalCase[] = [
     },
   },
   {
-    name: "auto-booking: confident matches post, unknowns go to review",
+    name: "auto-booking: confident matches post through the log, unknowns go to review",
     run: () => {
-      const ledger = baseLedger();
-      const categorizer = new Categorizer();
-      categorizer.learn("revenue", "stripe");
-      categorizer.learn("aws-expense", "aws");
-      const engine = new BankBookingEngine(ledger, categorizer);
+      const store = new InMemoryCommandStore();
+      const books = new Books(DEMO_ACCOUNTS, store);
+      books.exec({ type: "learn-category", accountId: "revenue", keyword: "stripe", actor: "t", at: "t" });
+      books.exec({ type: "learn-category", accountId: "aws-expense", keyword: "aws", actor: "t", at: "t" });
 
+      const engine = new BankBookingEngine(books.rules);
       const lines: BankLine[] = [
         { id: "1", date: "2026-09-04", description: "STRIPE PAYOUT", amount: 1000, cashAccountId: "cash" },
         { id: "2", date: "2026-09-04", description: "AWS billing", amount: -200, cashAccountId: "cash" },
         { id: "3", date: "2026-09-04", description: "unknown wire transfer", amount: 5000, cashAccountId: "cash" },
       ];
-      const results = lines.map((line) => engine.book(line));
+      const results = lines.map((line) =>
+        books.recordBankDecision(engine.decide(line), "auto-booking", "t")
+      );
       const rate = autoBookRate(results);
       const unknownResult = results[2];
 
+      // An auto-booked entry has to survive a restart the same way an approved
+      // one does, so the rebuilt books must hold the same two entries.
+      const rebuilt = new Books(DEMO_ACCOUNTS, store);
+
       return expect(
-        rate === 2 / 3 && !unknownResult.autoBooked && unknownResult.proposal !== undefined,
-        `expected 2/3 auto-book rate with unknown line sent to review, got rate=${rate}, unknownAutoBooked=${unknownResult.autoBooked}`
+        rate === 2 / 3 &&
+          !unknownResult.autoBooked &&
+          unknownResult.proposal !== undefined &&
+          rebuilt.books.getEntries().length === 2 &&
+          rebuilt.books.balanceOf("cash") === 800,
+        `expected 2/3 auto-booked and both entries to survive replay, got rate=${rate}, replayed entries=${rebuilt.books.getEntries().length}, cash=${rebuilt.books.balanceOf("cash")}`
       );
     },
   },
