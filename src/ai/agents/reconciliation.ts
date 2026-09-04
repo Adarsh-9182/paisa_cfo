@@ -28,6 +28,7 @@ export class ReconciliationAgent extends Agent {
         proposals.push(
           proposal(
             this.name,
+            `recon:${external.accountId}:${external.asOf}`,
             `${accountName} out of balance as of ${external.asOf}: books say ${formatAmount(bookBalance)}, statement says ${formatAmount(external.reportedBalance)}, a difference of ${formatAmount(diff)}`,
             [],
             0

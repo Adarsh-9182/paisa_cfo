@@ -1,5 +1,8 @@
 import { buildDemoBooks } from "@/demo/books";
 import type { AgentProposal } from "@/ai/types";
+import type { ProposalDisposition } from "@/books";
+import { decideProposal, resetDemo } from "./actions";
+import { readUserCommands } from "./session";
 
 const inr = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -15,8 +18,9 @@ const AGENT_LABELS: Record<string, string> = {
   "categorization-agent": "Categorization",
 };
 
-export default function Page() {
-  const books = buildDemoBooks();
+export default async function Page() {
+  const books = buildDemoBooks(await readUserCommands());
+  const decidedCount = Object.keys(books.dispositions).length;
 
   const revenueThisPeriod = -books.ledger.activityBetween("revenue", "2026-09-01", "2026-09-30");
   const cash = books.ledger.balanceOf("cash");
@@ -43,6 +47,16 @@ export default function Page() {
             <span className="rounded-md border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-amber-300">
               Open
             </span>
+            {decidedCount > 0 && (
+              <form action={resetDemo}>
+                <button
+                  type="submit"
+                  className="rounded-md border border-white/10 px-2 py-1 text-zinc-400 transition-colors hover:border-white/25 hover:text-zinc-200"
+                >
+                  Reset ({decidedCount})
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </header>
@@ -74,6 +88,7 @@ export default function Page() {
                 <ProposalRow
                   key={p.id}
                   proposal={p}
+                  disposition={books.dispositions[p.id]}
                   accountName={(id) => books.ledger.getAccount(id)?.name ?? id}
                 />
               ))}
@@ -206,15 +221,22 @@ function SectionTitle({ title, hint }: { title: string; hint: string }) {
 
 function ProposalRow({
   proposal,
+  disposition,
   accountName,
 }: {
   proposal: AgentProposal;
+  disposition?: ProposalDisposition;
   accountName: (id: string) => string;
 }) {
   const posts = proposal.suggestedLines.length > 0;
+  const decided = disposition !== undefined;
 
   return (
-    <li className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+    <li
+      className={`rounded-xl border px-4 py-3 transition-colors ${
+        decided ? "border-white/5 bg-white/[0.01]" : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -225,7 +247,13 @@ function ProposalRow({
               {(proposal.confidence * 100).toFixed(0)}% confidence
             </span>
           </div>
-          <p className="mt-1.5 text-[12.5px] leading-snug text-zinc-300">{proposal.summary}</p>
+          <p
+            className={`mt-1.5 text-[12.5px] leading-snug ${
+              decided ? "text-zinc-500" : "text-zinc-300"
+            }`}
+          >
+            {proposal.summary}
+          </p>
         </div>
         <span
           className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
@@ -253,6 +281,57 @@ function ProposalRow({
           </tbody>
         </table>
       )}
+
+      <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-white/8 pt-2.5">
+        {decided ? (
+          <span className="text-[11px] text-zinc-500">
+            {disposition.status === "approved" ? (
+              <>
+                <span className="text-emerald-400">Approved</span> by {disposition.actor} — posted
+                as entry{" "}
+                <span className="font-mono text-[10px]">
+                  {disposition.entryId.slice(0, 8)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-zinc-400">Dismissed</span> by {disposition.actor} —{" "}
+                {disposition.reason}
+              </>
+            )}
+          </span>
+        ) : (
+          <>
+            <span className="text-[11px] text-zinc-600">
+              {posts ? "Approving posts this entry to the ledger." : "Nothing to post."}
+            </span>
+            <div className="flex shrink-0 gap-1.5">
+              {posts && (
+                <form action={decideProposal}>
+                  <input type="hidden" name="proposalId" value={proposal.id} />
+                  <input type="hidden" name="intent" value="approve" />
+                  <button
+                    type="submit"
+                    className="rounded-md bg-emerald-400 px-2.5 py-1 text-[11px] font-medium text-black transition-colors hover:bg-emerald-300"
+                  >
+                    Approve
+                  </button>
+                </form>
+              )}
+              <form action={decideProposal}>
+                <input type="hidden" name="proposalId" value={proposal.id} />
+                <input type="hidden" name="intent" value="dismiss" />
+                <button
+                  type="submit"
+                  className="rounded-md border border-white/12 px-2.5 py-1 text-[11px] text-zinc-400 transition-colors hover:border-white/25 hover:text-zinc-200"
+                >
+                  Dismiss
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+      </div>
     </li>
   );
 }

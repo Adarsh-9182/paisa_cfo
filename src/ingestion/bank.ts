@@ -48,6 +48,7 @@ export class BankBookingEngine {
         line,
         proposal: proposal(
           "categorization-agent",
+          `categorization:${line.id}`,
           `No category match for "${line.description}"`,
           [],
           0
@@ -75,6 +76,7 @@ export class BankBookingEngine {
       line,
       proposal: proposal(
         "categorization-agent",
+        `categorization:${line.id}`,
         `Low-confidence match for "${line.description}" -> ${match.accountId}`,
         draftLines,
         match.confidence
