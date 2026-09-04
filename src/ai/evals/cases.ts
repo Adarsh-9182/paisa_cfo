@@ -10,6 +10,7 @@ import { RevRecAgent } from "../agents/revrec";
 import { Books } from "../../books";
 import { InMemoryCommandStore } from "../../persistence/commands";
 import { incomeStatement, balanceSheet } from "../../reports";
+import { snapshot } from "../../metrics";
 import type { EvalCase } from "../eval";
 
 function expect(condition: boolean, message: string) {
@@ -435,6 +436,65 @@ export const evalCases: EvalCase[] = [
           bs.totalAssets === 11000 &&
           bs.retainedEarnings === 11000,
         `expected Sep-only P&L of 10000/3000/7000 and a balanced sheet with 11000 assets, got revenue=${pl.totalRevenue}, expenses=${pl.totalExpenses}, net=${pl.netIncome}, assets=${bs.totalAssets}, earnings=${bs.retainedEarnings}, balanced=${bs.balanced}`
+      );
+    },
+  },
+  {
+    name: "metrics: burn comes from cash moving, and a cash-positive month has no runway",
+    run: () => {
+      const books = new Books(DEMO_ACCOUNTS);
+      const at = "2026-09-30T00:00:00.000Z";
+      const post = (key: string, date: string, lines: { accountId: string; debit: number; credit: number }[]) =>
+        books.exec({ type: "post-entry", idempotencyKey: key, date, memo: key, lines, actor: "t", at });
+
+      post("aug-open", "2026-08-01", [
+        { accountId: "cash", debit: 50000, credit: 0 },
+        { accountId: "revenue", debit: 0, credit: 50000 },
+      ]);
+      // September: 30000 in, 12000 out. Cash grows, so nothing is burning.
+      post("sep-in", "2026-09-05", [
+        { accountId: "cash", debit: 30000, credit: 0 },
+        { accountId: "revenue", debit: 0, credit: 30000 },
+      ]);
+      post("sep-out", "2026-09-20", [
+        { accountId: "rent-expense", debit: 12000, credit: 0 },
+        { accountId: "cash", debit: 0, credit: 12000 },
+      ]);
+
+      const period = { start: "2026-09-01", end: "2026-09-30" };
+      const prior = { start: "2026-08-01", end: "2026-08-31" };
+      const positive = snapshot(books.books, DEMO_ACCOUNTS, period, prior);
+
+      // A revenue-less month with the same spend is a real burn: 12000 out,
+      // nothing in, against 50000 of cash — a shade over four months left.
+      const lean = new Books(DEMO_ACCOUNTS);
+      lean.exec({
+        type: "post-entry", idempotencyKey: "open", date: "2026-08-01", memo: "open",
+        lines: [
+          { accountId: "cash", debit: 50000, credit: 0 },
+          { accountId: "revenue", debit: 0, credit: 50000 },
+        ],
+        actor: "t", at,
+      });
+      lean.exec({
+        type: "post-entry", idempotencyKey: "spend", date: "2026-09-20", memo: "spend",
+        lines: [
+          { accountId: "rent-expense", debit: 12000, credit: 0 },
+          { accountId: "cash", debit: 0, credit: 12000 },
+        ],
+        actor: "t", at,
+      });
+      const burning = snapshot(lean.books, DEMO_ACCOUNTS, period, prior);
+
+      return expect(
+        positive.grossBurn === 12000 &&
+          positive.netBurn === -18000 &&
+          positive.runwayMonths === null &&
+          positive.cashChange === 18000 &&
+          burning.netBurn === 12000 &&
+          burning.runwayMonths !== null &&
+          Math.round(burning.runwayMonths) === 3,
+        `expected a cash-positive month to report no runway and a burning one ~3 months, got positiveRunway=${positive.runwayMonths}, netBurn=${positive.netBurn}, burningRunway=${burning.runwayMonths}`
       );
     },
   },
