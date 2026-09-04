@@ -1,6 +1,6 @@
 import { buildDemoBooks } from "@/demo/books";
 import { readUserCommands } from "../session";
-import { Panel, Empty } from "../ui";
+import { Panel, Empty, Card } from "../ui";
 import { ProposalRow } from "../proposal-row";
 
 export default async function ProposalsPage() {
@@ -19,7 +19,7 @@ export default async function ProposalsPage() {
         {pending.length === 0 ? (
           <Empty>Nothing open. Every proposal has been approved or dismissed.</Empty>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {pending.map((p) => (
               <ProposalRow key={p.id} proposal={p} accountName={accountName} />
             ))}
@@ -29,7 +29,7 @@ export default async function ProposalsPage() {
 
       {decided.length > 0 && (
         <Panel title="Decided" hint="Kept in view so a decision can be traced, not just its effect.">
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {decided.map((p) => (
               <ProposalRow
                 key={p.id}
@@ -47,13 +47,12 @@ export default async function ProposalsPage() {
           title="Could not be applied"
           hint="Saved decisions the books have since moved past. They are shown rather than dropped."
         >
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {books.rejected.map((r, i) => (
-              <li
-                key={i}
-                className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-4 py-3 text-[12px] text-amber-200/80"
-              >
-                {r.reason}
+              <li key={i}>
+                <Card className="border-amber-200 bg-amber-50/60 px-5 py-4 text-[13px] text-amber-800">
+                  {r.reason}
+                </Card>
               </li>
             ))}
           </ul>

@@ -1,6 +1,6 @@
 import { buildDemoBooks } from "@/demo/books";
 import { readUserCommands } from "../session";
-import { Metric, MetricRow, Panel, money } from "../ui";
+import { Badge, Card, Metric, MetricRow, Panel, money } from "../ui";
 
 export default async function BankPage() {
   const books = buildDemoBooks(await readUserCommands());
@@ -20,7 +20,9 @@ export default async function BankPage() {
         <Metric label="Auto-booked" value={`${(books.autoBookRate * 100).toFixed(1)}%`}>
           {booked.length} of {books.bookings.length} lines
         </Metric>
-        <Metric label="Needs review" value={String(review.length)}>no confident match</Metric>
+        <Metric label="Needs review" value={String(review.length)}>
+          no confident match
+        </Metric>
         <Metric label="Money in" value={money(inflow)}>across the feed</Metric>
         <Metric label="Money out" value={money(outflow)}>across the feed</Metric>
       </MetricRow>
@@ -29,37 +31,31 @@ export default async function BankPage() {
         title="Bank feed"
         hint="A confident keyword match posts itself. Anything else becomes a proposal rather than a guess."
       >
-        <ul className="overflow-hidden rounded-xl border border-white/10">
+        <Card className="divide-y divide-zinc-100 overflow-hidden">
           {books.bookings.map(({ line, autoBooked }) => (
-            <li
+            <div
               key={line.id}
-              className="flex items-center justify-between gap-3 border-b border-white/5 px-3 py-2 text-[12px] last:border-0"
+              className="flex items-center justify-between gap-4 px-4 py-3 text-[13px]"
             >
               <div className="min-w-0">
-                <div className="truncate text-zinc-300">{line.description}</div>
-                <div className="font-mono text-[10px] text-zinc-600">{line.date}</div>
+                <div className="truncate font-medium text-zinc-800">{line.description}</div>
+                <div className="num mt-0.5 text-[11px] text-zinc-400">{line.date}</div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-3">
                 <span
-                  className={`font-mono tabular-nums ${
-                    line.amount >= 0 ? "text-emerald-400" : "text-zinc-400"
+                  className={`num text-[13px] font-medium ${
+                    line.amount >= 0 ? "text-emerald-700" : "text-zinc-700"
                   }`}
                 >
                   {money(line.amount)}
                 </span>
-                <span
-                  className={`rounded px-1.5 py-0.5 text-[10px] ${
-                    autoBooked
-                      ? "bg-emerald-400/10 text-emerald-300"
-                      : "bg-amber-400/10 text-amber-300"
-                  }`}
-                >
+                <Badge tone={autoBooked ? "positive" : "warning"}>
                   {autoBooked ? "booked" : "review"}
-                </span>
+                </Badge>
               </div>
-            </li>
+            </div>
           ))}
-        </ul>
+        </Card>
       </Panel>
     </div>
   );
