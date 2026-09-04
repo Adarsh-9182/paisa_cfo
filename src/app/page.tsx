@@ -1,55 +1,204 @@
 import Link from "next/link";
 import { buildDemoBooks } from "@/demo/books";
+import { snapshot, closeChecklist } from "@/metrics";
 import { readUserCommands } from "./session";
-import { Metric, MetricRow, Panel, money, Empty } from "./ui";
-import { ProposalRow } from "./proposal-row";
+import { money } from "./ui";
+
+const PERIOD = { start: "2026-09-01", end: "2026-09-30" };
+const PRIOR = { start: "2026-08-01", end: "2026-08-31" };
+
+const PINNED_REPORTS = [
+  { label: "Profit and loss", href: "/reports" },
+  { label: "Balance sheet", href: "/reports" },
+  { label: "Trial balance", href: "/reports" },
+  { label: "General ledger", href: "/journal" },
+];
 
 export default async function OverviewPage() {
   const books = buildDemoBooks(await readUserCommands());
 
-  const revenueThisPeriod = -books.ledger.activityBetween("revenue", "2026-09-01", "2026-09-30");
-  const cash = books.ledger.balanceOf("cash");
-  const needsReview = books.bookings.filter((b) => !b.autoBooked).length;
   const pending = books.proposals.filter((p) => !books.dispositions[p.id]);
+  const needsReview = books.bookings.filter((b) => !b.autoBooked).length;
+  const balanced = Math.round((books.totals.debits - books.totals.credits) * 100) === 0;
+
+  const snap = snapshot(books.ledger, books.accounts, PERIOD, PRIOR);
+  const checklist = closeChecklist(books.ledger, books.accounts, PERIOD, {
+    linesNeedingReview: needsReview,
+    pendingProposals: pending.length,
+    balanced,
+  });
+  const done = checklist.filter((c) => c.done).length;
+
+  const needsAction = [
+    { label: "Proposals awaiting a decision", count: pending.length, href: "/proposals" },
+    { label: "Bank lines to categorise", count: needsReview, href: "/bank" },
+    {
+      label: "Entries posted from approvals",
+      count: Object.values(books.dispositions).filter((d) => d.status === "approved").length,
+      href: "/journal",
+    },
+  ];
 
   return (
-    <div className="space-y-8">
-      <MetricRow>
-        <Metric label="Auto-booked" value={`${(books.autoBookRate * 100).toFixed(1)}%`}>
-          {books.bookings.length - needsReview} of {books.bookings.length} bank lines
-        </Metric>
-        <Metric label="Cash" value={money(cash)}>across all accounts</Metric>
-        <Metric label="Revenue · Sep" value={money(revenueThisPeriod)}>recognised in period</Metric>
-        <Metric label="Needs a human" value={String(pending.length)}>open agent proposals</Metric>
-      </MetricRow>
+    <div className="space-y-10">
+      <section className="pt-2 text-center">
+        <h1 className="text-[15px] font-semibold tracking-tight text-zinc-200">
+          Close September, then rest.
+        </h1>
+        <div className="mx-auto mt-3 flex max-w-xl items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5">
+          <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-emerald-400/80 text-[9px] font-bold text-black">
+            P
+          </span>
+          <span className="flex-1 text-left text-[12.5px] text-zinc-600">
+            Ask anything about these books…
+          </span>
+          <span className="shrink-0 rounded bg-white/8 px-1.5 py-0.5 text-[10px] text-zinc-500">
+            not wired yet
+          </span>
+        </div>
+        <p className="mt-2 text-[11px] text-zinc-600">
+          The agents already read the ledger. Asking them in words is the next piece.
+        </p>
+      </section>
 
-      <Panel
-        title="Waiting on you"
-        hint="Agents read the ledger and propose. Nothing here has touched the books."
-        actions={
-          <Link
-            href="/proposals"
-            className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+      <section>
+        <SectionLabel>Snapshot</SectionLabel>
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/10 bg-white/8 lg:grid-cols-4">
+          <Tile label="Cash balance" value={money(snap.cash)} delta={snap.cashChange} />
+          <Tile label="Revenue" value={money(snap.revenue)} delta={snap.revenueChange} />
+          <Tile label="Gross burn" value={money(snap.grossBurn)}>
+            cash out this period
+          </Tile>
+          <Tile
+            label="Runway"
+            value={snap.runwayMonths === null ? "Cash positive" : `${snap.runwayMonths.toFixed(0)} months`}
           >
-            All proposals →
-          </Link>
-        }
-      >
-        {pending.length === 0 ? (
-          <Empty>Every proposal has been dealt with. The close is clear.</Empty>
-        ) : (
-          <ul className="space-y-2">
-            {pending.slice(0, 3).map((p) => (
-              <ProposalRow
-                key={p.id}
-                proposal={p}
-                disposition={books.dispositions[p.id]}
-                accountName={(id) => books.ledger.getAccount(id)?.name ?? id}
-              />
+            {snap.runwayMonths === null
+              ? `net ${money(-snap.netBurn)} added`
+              : `at ${money(snap.netBurn)} a month`}
+          </Tile>
+        </div>
+        <p className="mt-1.5 text-[10px] text-zinc-700">
+          As of {PERIOD.end}. Compared with the period ending {PRIOR.end}.
+        </p>
+      </section>
+
+      <div className="grid gap-8 lg:grid-cols-3">
+        <section>
+          <SectionLabel>Needs action</SectionLabel>
+          <ul className="overflow-hidden rounded-xl border border-white/10">
+            {needsAction.map((item) => (
+              <li key={item.label} className="border-b border-white/5 last:border-0">
+                <Link
+                  href={item.href}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-[12px] transition-colors hover:bg-white/[0.03]"
+                >
+                  <span className="text-zinc-400">{item.label}</span>
+                  <span
+                    className={`font-mono tabular-nums ${
+                      item.count > 0 ? "text-amber-300" : "text-zinc-600"
+                    }`}
+                  >
+                    {item.count}
+                  </span>
+                </Link>
+              </li>
             ))}
           </ul>
+        </section>
+
+        <section>
+          <SectionLabel>
+            Close checklist
+            <span className="ml-2 font-mono text-[10px] text-zinc-600">
+              {done} / {checklist.length}
+            </span>
+          </SectionLabel>
+          <div className="overflow-hidden rounded-xl border border-white/10">
+            <div className="h-1 bg-white/5">
+              <div
+                className="h-full bg-emerald-400/70"
+                style={{ width: `${(done / checklist.length) * 100}%` }}
+              />
+            </div>
+            <ul>
+              {checklist.map((item) => (
+                <li
+                  key={item.label}
+                  className="flex items-start gap-2.5 border-b border-white/5 px-3 py-2.5 text-[12px] last:border-0"
+                >
+                  <span
+                    className={`mt-[3px] grid h-3 w-3 shrink-0 place-items-center rounded-full text-[8px] ${
+                      item.done ? "bg-emerald-400 text-black" : "border border-white/20"
+                    }`}
+                  >
+                    {item.done ? "✓" : ""}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={item.done ? "text-zinc-500" : "text-zinc-300"}>
+                      {item.label}
+                    </span>
+                    <span className="block text-[10px] text-zinc-600">{item.detail}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <section>
+          <SectionLabel>Reports</SectionLabel>
+          <ul className="overflow-hidden rounded-xl border border-white/10">
+            {PINNED_REPORTS.map((report) => (
+              <li key={report.label} className="border-b border-white/5 last:border-0">
+                <Link
+                  href={report.href}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-[12px] text-zinc-400 transition-colors hover:bg-white/[0.03] hover:text-zinc-200"
+                >
+                  {report.label}
+                  <span className="text-zinc-700">→</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-2.5 text-[10px] uppercase tracking-wider text-zinc-500">{children}</h2>
+  );
+}
+
+function Tile({
+  label,
+  value,
+  delta,
+  children,
+}: {
+  label: string;
+  value: string;
+  delta?: number;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="bg-[#08090b] px-4 py-3.5">
+      <div className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className="mt-1 font-mono text-[19px] tabular-nums tracking-tight text-zinc-50">
+        {value}
+      </div>
+      <div className="mt-0.5 text-[11px] text-zinc-600">
+        {delta !== undefined ? (
+          <span className={delta >= 0 ? "text-emerald-400/80" : "text-red-400/80"}>
+            {delta >= 0 ? "▲" : "▼"} {money(Math.abs(delta))}
+          </span>
+        ) : (
+          children
         )}
-      </Panel>
+      </div>
     </div>
   );
 }
