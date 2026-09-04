@@ -9,6 +9,7 @@ import { ReconciliationAgent } from "../agents/reconciliation";
 import { RevRecAgent } from "../agents/revrec";
 import { Books } from "../../books";
 import { InMemoryCommandStore } from "../../persistence/commands";
+import { incomeStatement, balanceSheet } from "../../reports";
 import type { EvalCase } from "../eval";
 
 function expect(condition: boolean, message: string) {
@@ -371,6 +372,69 @@ export const evalCases: EvalCase[] = [
       return expect(
         refused && books.books.getEntries().length === 0 && books.log().length === 0,
         `expected the advisory approval to be refused and leave no entry or command, got refused=${refused}, entries=${books.books.getEntries().length}, log=${books.log().length}`
+      );
+    },
+  },
+  {
+    name: "reports: balance sheet balances, and P&L counts only the period",
+    run: () => {
+      const books = new Books(DEMO_ACCOUNTS);
+      const at = "2026-09-30T00:00:00.000Z";
+
+      // Cash sale in August, so it belongs to August's P&L and not September's.
+      books.exec({
+        type: "post-entry",
+        idempotencyKey: "aug-sale",
+        date: "2026-08-10",
+        memo: "August sale",
+        lines: [
+          { accountId: "cash", debit: 4000, credit: 0 },
+          { accountId: "revenue", debit: 0, credit: 4000 },
+        ],
+        actor: "t",
+        at,
+      });
+      books.exec({
+        type: "post-entry",
+        idempotencyKey: "sep-sale",
+        date: "2026-09-10",
+        memo: "September sale",
+        lines: [
+          { accountId: "cash", debit: 10000, credit: 0 },
+          { accountId: "revenue", debit: 0, credit: 10000 },
+        ],
+        actor: "t",
+        at,
+      });
+      books.exec({
+        type: "post-entry",
+        idempotencyKey: "sep-rent",
+        date: "2026-09-20",
+        memo: "September rent",
+        lines: [
+          { accountId: "rent-expense", debit: 3000, credit: 0 },
+          { accountId: "cash", debit: 0, credit: 3000 },
+        ],
+        actor: "t",
+        at,
+      });
+
+      const pl = incomeStatement(books.books, DEMO_ACCOUNTS, {
+        start: "2026-09-01",
+        end: "2026-09-30",
+      });
+      const bs = balanceSheet(books.books, DEMO_ACCOUNTS, "2026-09-30");
+
+      // September only: 10000 revenue less 3000 rent. August's 4000 is excluded
+      // from the P&L but still sits in cash and retained earnings.
+      return expect(
+        pl.totalRevenue === 10000 &&
+          pl.totalExpenses === 3000 &&
+          pl.netIncome === 7000 &&
+          bs.balanced &&
+          bs.totalAssets === 11000 &&
+          bs.retainedEarnings === 11000,
+        `expected Sep-only P&L of 10000/3000/7000 and a balanced sheet with 11000 assets, got revenue=${pl.totalRevenue}, expenses=${pl.totalExpenses}, net=${pl.netIncome}, assets=${bs.totalAssets}, earnings=${bs.retainedEarnings}, balanced=${bs.balanced}`
       );
     },
   },
