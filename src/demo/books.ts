@@ -1,6 +1,6 @@
-import { Ledger } from "../ledger/ledger";
+import { Books } from "../books";
+import type { Ledger } from "../ledger/ledger";
 import type { Account } from "../ledger/types";
-import { Categorizer } from "../ingestion/categorize";
 import { BankBookingEngine, type BankLine, type BankBookingResult } from "../ingestion/bank";
 import { autoBookRate } from "../ingestion/stats";
 import { AccrualAgent } from "../ai/agents/accrual";
@@ -57,36 +57,46 @@ export interface DemoBooks {
 }
 
 export function buildDemoBooks(): DemoBooks {
-  const ledger = new Ledger();
-  for (const account of CHART_OF_ACCOUNTS) ledger.addAccount(account);
+  const seededAt = "2026-09-01T00:00:00.000Z";
+  const books = new Books(CHART_OF_ACCOUNTS);
+  const ledger = books.books;
+
+  for (const [accountId, keywords] of CATEGORY_RULES) {
+    for (const keyword of keywords) {
+      books.exec({ type: "learn-category", accountId, keyword, actor: "seed", at: seededAt });
+    }
+  }
 
   // Annual contracts billed upfront: cash in now, revenue owed over the term.
-  ledger.post({
+  books.exec({
+    type: "post-entry",
+    idempotencyKey: "contract:acme",
     date: "2026-07-01",
     memo: "Acme Corp — annual contract, billed upfront",
-    idempotencyKey: "contract:acme",
     lines: [
       { accountId: "cash", debit: 1200000, credit: 0 },
       { accountId: "deferred-revenue", debit: 0, credit: 1200000 },
     ],
+    actor: "seed",
+    at: seededAt,
   });
-  ledger.post({
+  books.exec({
+    type: "post-entry",
+    idempotencyKey: "contract:globex",
     date: "2026-08-01",
     memo: "Globex — annual contract, billed upfront",
-    idempotencyKey: "contract:globex",
     lines: [
       { accountId: "cash", debit: 600000, credit: 0 },
       { accountId: "deferred-revenue", debit: 0, credit: 600000 },
     ],
+    actor: "seed",
+    at: seededAt,
   });
 
-  const categorizer = new Categorizer();
-  for (const [accountId, keywords] of CATEGORY_RULES) {
-    for (const keyword of keywords) categorizer.learn(accountId, keyword);
-  }
-
-  const engine = new BankBookingEngine(ledger, categorizer);
-  const bookings = BANK_LINES.map((line) => engine.book(line));
+  const engine = new BankBookingEngine(books.rules);
+  const bookings = BANK_LINES.map((line) =>
+    books.recordBankDecision(engine.decide(line), "auto-booking", seededAt)
+  );
 
   const september = { start: "2026-09-01", end: "2026-09-30" };
   const august = { start: "2026-08-01", end: "2026-08-31" };

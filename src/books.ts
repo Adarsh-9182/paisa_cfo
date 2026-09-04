@@ -1,6 +1,7 @@
 import { Ledger } from "./ledger/ledger";
 import type { Account } from "./ledger/types";
 import { Categorizer } from "./ingestion/categorize";
+import type { BankDecision, BankBookingResult } from "./ingestion/bank";
 import {
   InMemoryCommandStore,
   type Command,
@@ -66,6 +67,33 @@ export class Books {
 
     this.store.append(command);
     this.apply(command);
+  }
+
+  /**
+   * Records what the ingestion engine decided. A confident match becomes a
+   * logged post-entry command like any other write; anything else stays a
+   * proposal and touches nothing.
+   */
+  recordBankDecision(decision: BankDecision, actor: string, at: string): BankBookingResult {
+    if (decision.kind === "review") {
+      return { line: decision.line, autoBooked: false, proposal: decision.proposal };
+    }
+
+    this.exec({
+      type: "post-entry",
+      idempotencyKey: decision.entry.idempotencyKey,
+      date: decision.entry.date,
+      memo: decision.entry.memo,
+      lines: decision.entry.lines,
+      actor,
+      at,
+    });
+
+    const entry = this.ledger
+      .getEntries()
+      .find((e) => e.idempotencyKey === decision.entry.idempotencyKey);
+
+    return { line: decision.line, autoBooked: true, entryId: entry?.id };
   }
 
   private replay() {

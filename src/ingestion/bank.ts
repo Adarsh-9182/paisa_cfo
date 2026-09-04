@@ -1,4 +1,3 @@
-import type { Ledger } from "../ledger/ledger";
 import type { JournalLine } from "../ledger/types";
 import { proposal } from "../ai/agent";
 import type { AgentProposal } from "../ai/types";
@@ -19,20 +18,34 @@ export interface BankBookingResult {
   proposal?: AgentProposal;
 }
 
+export type BankDecision =
+  | {
+      kind: "book";
+      line: BankLine;
+      entry: { date: string; memo: string; lines: JournalLine[]; idempotencyKey: string };
+    }
+  | { kind: "review"; line: BankLine; proposal: AgentProposal };
+
+/**
+ * Decides what a bank line means and stops there. It deliberately cannot
+ * write: posting happens through the command log so that an auto-booked entry
+ * is recorded the same way an approved one is. An engine that posted directly
+ * would produce a ledger that a replay could not reconstruct — the audit trail
+ * would reference entries that vanish on restart.
+ */
 export class BankBookingEngine {
   constructor(
-    private ledger: Ledger,
     private categorizer: Categorizer,
     private confidenceThreshold = 1
   ) {}
 
-  book(line: BankLine): BankBookingResult {
+  decide(line: BankLine): BankDecision {
     const match = this.categorizer.categorize(line.description);
 
     if (!match) {
       return {
+        kind: "review",
         line,
-        autoBooked: false,
         proposal: proposal(
           "categorization-agent",
           `No category match for "${line.description}"`,
@@ -45,18 +58,21 @@ export class BankBookingEngine {
     const draftLines = this.draftLines(line, match.accountId);
 
     if (match.confidence >= this.confidenceThreshold) {
-      const entry = this.ledger.post({
-        date: line.date,
-        memo: line.description,
-        lines: draftLines,
-        idempotencyKey: `bank:${line.id}`,
-      });
-      return { line, autoBooked: true, entryId: entry.id };
+      return {
+        kind: "book",
+        line,
+        entry: {
+          date: line.date,
+          memo: line.description,
+          lines: draftLines,
+          idempotencyKey: `bank:${line.id}`,
+        },
+      };
     }
 
     return {
+      kind: "review",
       line,
-      autoBooked: false,
       proposal: proposal(
         "categorization-agent",
         `Low-confidence match for "${line.description}" -> ${match.accountId}`,
