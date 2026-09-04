@@ -85,14 +85,24 @@ export class BankBookingEngine {
   }
 
   private draftLines(line: BankLine, categoryAccountId: string): JournalLine[] {
-    return line.amount >= 0
-      ? [
-          { accountId: line.cashAccountId, debit: line.amount, credit: 0 },
-          { accountId: categoryAccountId, debit: 0, credit: line.amount },
-        ]
-      : [
-          { accountId: categoryAccountId, debit: -line.amount, credit: 0 },
-          { accountId: line.cashAccountId, debit: 0, credit: -line.amount },
-        ];
+    return bankEntryLines(line, categoryAccountId);
   }
+}
+
+/**
+ * Money arriving is a debit to cash and a credit to whatever earned it; money
+ * leaving is the reverse. A human categorising a line by hand has to produce
+ * the same shape the engine would have, so both go through here rather than
+ * each deciding the direction for itself.
+ */
+export function bankEntryLines(line: BankLine, categoryAccountId: string): JournalLine[] {
+  return line.amount >= 0
+    ? [
+        { accountId: line.cashAccountId, debit: line.amount, credit: 0 },
+        { accountId: categoryAccountId, debit: 0, credit: line.amount },
+      ]
+    : [
+        { accountId: categoryAccountId, debit: -line.amount, credit: 0 },
+        { accountId: line.cashAccountId, debit: 0, credit: -line.amount },
+      ];
 }
