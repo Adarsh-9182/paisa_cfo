@@ -11,6 +11,7 @@ import { Books } from "../../books";
 import { InMemoryCommandStore } from "../../persistence/commands";
 import { incomeStatement, balanceSheet } from "../../reports";
 import { snapshot } from "../../metrics";
+import { answerQuestion } from "../tools";
 import type { EvalCase } from "../eval";
 
 function expect(condition: boolean, message: string) {
@@ -495,6 +496,54 @@ export const evalCases: EvalCase[] = [
           burning.runwayMonths !== null &&
           Math.round(burning.runwayMonths) === 3,
         `expected a cash-positive month to report no runway and a burning one ~3 months, got positiveRunway=${positive.runwayMonths}, netBurn=${positive.netBurn}, burningRunway=${burning.runwayMonths}`
+      );
+    },
+  },
+  {
+    name: "tools: answers from the ledger with citations, refuses what it cannot compute",
+    run: () => {
+      const books = new Books(DEMO_ACCOUNTS);
+      const at = "2026-09-30T00:00:00.000Z";
+      books.exec({
+        type: "post-entry",
+        idempotencyKey: "sep-rent",
+        date: "2026-09-20",
+        memo: "September rent",
+        lines: [
+          { accountId: "rent-expense", debit: 7000, credit: 0 },
+          { accountId: "cash", debit: 0, credit: 7000 },
+        ],
+        actor: "t",
+        at,
+      });
+
+      const ctx = {
+        ledger: books.books,
+        accounts: DEMO_ACCOUNTS,
+        proposals: [],
+        dispositions: {},
+        unmatchedCount: 0,
+        balanced: true,
+        period: { start: "2026-09-01", end: "2026-09-30" },
+        priorPeriod: { start: "2026-08-01", end: "2026-08-31" },
+      };
+
+      const activity = answerQuestion("how much moved through rent this period?", ctx);
+      const close = answerQuestion("what is left on my close?", ctx);
+
+      // The refusal is the case that matters most: an unanswerable question has
+      // to come back empty, not with a number the tools quietly invented.
+      const unknown = answerQuestion("who is our largest customer by headcount?", ctx);
+
+      return expect(
+        activity.result !== null &&
+          activity.result.answer.includes("₹7,000") &&
+          activity.result.citations.length === 1 &&
+          close.result !== null &&
+          unknown.result === null &&
+          unknown.tool === null &&
+          unknown.refusal !== undefined,
+        `expected a cited rent answer and a refusal for the unanswerable question, got activity=${JSON.stringify(activity.result?.answer)}, citations=${activity.result?.citations.length}, unknownTool=${unknown.tool}`
       );
     },
   },

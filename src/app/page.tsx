@@ -1,8 +1,16 @@
 import Link from "next/link";
 import { buildDemoBooks } from "@/demo/books";
 import { snapshot, closeChecklist } from "@/metrics";
+import { answerQuestion } from "@/ai/tools";
 import { readUserCommands } from "./session";
 import { money } from "./ui";
+
+const SUGGESTIONS = [
+  "What is left on my close?",
+  "What is our burn and runway?",
+  "What is pending approval?",
+  "How much moved through payroll this period?",
+];
 
 const PERIOD = { start: "2026-09-01", end: "2026-09-30" };
 const PRIOR = { start: "2026-08-01", end: "2026-08-31" };
@@ -14,12 +22,27 @@ const PINNED_REPORTS = [
   { label: "General ledger", href: "/journal" },
 ];
 
-export default async function OverviewPage() {
+export default async function OverviewPage(props: PageProps<"/">) {
   const books = buildDemoBooks(await readUserCommands());
+  const params = await props.searchParams;
+  const question = typeof params.q === "string" ? params.q : "";
 
   const pending = books.proposals.filter((p) => !books.dispositions[p.id]);
   const needsReview = books.bookings.filter((b) => !b.autoBooked).length;
   const balanced = Math.round((books.totals.debits - books.totals.credits) * 100) === 0;
+
+  const answer = question
+    ? answerQuestion(question, {
+        ledger: books.ledger,
+        accounts: books.accounts,
+        proposals: books.proposals,
+        dispositions: books.dispositions,
+        unmatchedCount: needsReview,
+        balanced,
+        period: PERIOD,
+        priorPeriod: PRIOR,
+      })
+    : null;
 
   const snap = snapshot(books.ledger, books.accounts, PERIOD, PRIOR);
   const checklist = closeChecklist(books.ledger, books.accounts, PERIOD, {
@@ -41,24 +64,77 @@ export default async function OverviewPage() {
 
   return (
     <div className="space-y-10">
-      <section className="pt-2 text-center">
-        <h1 className="text-[15px] font-semibold tracking-tight text-zinc-200">
+      <section className="pt-2">
+        <h1 className="text-center text-[15px] font-semibold tracking-tight text-zinc-200">
           Close September, then rest.
         </h1>
-        <div className="mx-auto mt-3 flex max-w-xl items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5">
-          <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-emerald-400/80 text-[9px] font-bold text-black">
-            P
-          </span>
-          <span className="flex-1 text-left text-[12.5px] text-zinc-600">
-            Ask anything about these books…
-          </span>
-          <span className="shrink-0 rounded bg-white/8 px-1.5 py-0.5 text-[10px] text-zinc-500">
-            not wired yet
-          </span>
-        </div>
-        <p className="mt-2 text-[11px] text-zinc-600">
-          The agents already read the ledger. Asking them in words is the next piece.
-        </p>
+
+        <form method="GET" className="mx-auto mt-3 max-w-xl">
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 focus-within:border-white/25">
+            <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-emerald-400/80 text-[9px] font-bold text-black">
+              P
+            </span>
+            <input
+              type="text"
+              name="q"
+              defaultValue={question}
+              placeholder="Ask anything about these books…"
+              className="flex-1 bg-transparent text-[12.5px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="shrink-0 rounded-full bg-white/8 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-white/15"
+            >
+              Ask
+            </button>
+          </div>
+        </form>
+
+        {answer ? (
+          <div className="mx-auto mt-3 max-w-xl rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+            {answer.result ? (
+              <>
+                <p className="text-[12.5px] leading-relaxed text-zinc-200">
+                  {answer.result.answer}
+                </p>
+                {answer.result.citations.length > 0 && (
+                  <div className="mt-2.5 border-t border-white/8 pt-2">
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">
+                      Computed from
+                    </div>
+                    <ul className="space-y-0.5">
+                      {answer.result.citations.map((c) => (
+                        <li key={c.entryId} className="flex gap-2 text-[11px] text-zinc-500">
+                          <span className="font-mono text-[10px] text-zinc-700">
+                            {c.entryId.slice(0, 8)}
+                          </span>
+                          <span className="truncate">{c.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="mt-2 font-mono text-[10px] text-zinc-700">
+                  answered by {answer.tool}
+                </div>
+              </>
+            ) : (
+              <p className="text-[12.5px] leading-relaxed text-zinc-500">{answer.refusal}</p>
+            )}
+          </div>
+        ) : (
+          <div className="mx-auto mt-2.5 flex max-w-xl flex-wrap justify-center gap-1.5">
+            {SUGGESTIONS.map((s) => (
+              <Link
+                key={s}
+                href={`/?q=${encodeURIComponent(s)}`}
+                className="rounded-full border border-white/8 px-2.5 py-1 text-[11px] text-zinc-600 transition-colors hover:border-white/20 hover:text-zinc-400"
+              >
+                {s}
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
