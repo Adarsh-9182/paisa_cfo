@@ -1,6 +1,7 @@
 import type { Ledger } from "../../ledger/ledger";
 import { Agent, proposal } from "../agent";
 import type { AgentProposal } from "../types";
+import { formatAmount } from "../../format";
 
 export interface RevRecSchedule {
   contractId: string;
@@ -37,7 +38,7 @@ export class RevRecAgent extends Agent {
       proposals.push(
         proposal(
           this.name,
-          `Recognize ${amount.toFixed(2)} of deferred revenue for contract ${schedule.contractId}, period ${this.targetPeriod}`,
+          `Recognize ${formatAmount(amount)} of deferred revenue for contract ${schedule.contractId}, period ${this.targetPeriod}`,
           [
             { accountId: schedule.deferredRevenueAccountId, debit: amount, credit: 0 },
             { accountId: schedule.revenueAccountId, debit: 0, credit: amount },
