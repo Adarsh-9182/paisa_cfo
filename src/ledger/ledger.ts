@@ -103,4 +103,17 @@ export class Ledger {
     }
     return balance;
   }
+
+  activityBetween(accountId: string, startDate: string, endDate: string): number {
+    let activity = 0;
+    for (const entry of this.entries) {
+      if (entry.date < startDate || entry.date > endDate) continue;
+      for (const line of entry.lines) {
+        if (line.accountId === accountId) {
+          activity += line.debit - line.credit;
+        }
+      }
+    }
+    return activity;
+  }
 }

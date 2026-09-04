@@ -128,7 +128,7 @@ export const evalCases: EvalCase[] = [
     },
   },
   {
-    name: "flux: flags large swings only, sign matches direction of change",
+    name: "flux: compares P&L activity per period, not cumulative balances",
     run: () => {
       const ledger = baseLedger();
       ledger.post({
@@ -150,12 +150,39 @@ export const evalCases: EvalCase[] = [
         ],
       });
 
-      const proposals = new FluxAgent(["revenue", "cash"], "2026-08-31", "2026-09-30", 0.2).analyze(ledger);
-      const revenueProposal = proposals.find((p) => p.summary.includes("revenue"));
+      // Steady spend: 1000 then 1050. Comparing period activity that is a 5%
+      // move and must stay quiet. Comparing cumulative balances instead would
+      // read 1000 -> 2050 and flag it as +105% every single month.
+      ledger.post({
+        date: "2026-08-20",
+        memo: "August rent",
+        idempotencyKey: "rent-aug-flux",
+        lines: [
+          { accountId: "rent-expense", debit: 1000, credit: 0 },
+          { accountId: "cash", debit: 0, credit: 1000 },
+        ],
+      });
+      ledger.post({
+        date: "2026-09-20",
+        memo: "September rent",
+        idempotencyKey: "rent-sep-flux",
+        lines: [
+          { accountId: "rent-expense", debit: 1050, credit: 0 },
+          { accountId: "cash", debit: 0, credit: 1050 },
+        ],
+      });
+
+      const proposals = new FluxAgent(
+        ["revenue", "rent-expense"],
+        { start: "2026-08-01", end: "2026-08-31" },
+        { start: "2026-09-01", end: "2026-09-30" },
+        0.2
+      ).analyze(ledger);
+      const revenueProposal = proposals.find((p) => p.summary.includes("Revenue"));
 
       return expect(
-        proposals.length === 1 && revenueProposal !== undefined && revenueProposal.summary.includes("+11000"),
-        `expected exactly 1 flux proposal (revenue) with a positive swing, got ${proposals.length}: ${JSON.stringify(proposals.map((p) => p.summary))}`
+        proposals.length === 1 && revenueProposal !== undefined && revenueProposal.summary.includes("+₹10,000"),
+        `expected exactly 1 flux proposal (revenue, +10000) with steady rent staying quiet, got ${proposals.length}: ${JSON.stringify(proposals.map((p) => p.summary))}`
       );
     },
   },
@@ -185,7 +212,7 @@ export const evalCases: EvalCase[] = [
         proposals.length === 0 &&
           mismatchProposals.length === 1 &&
           mismatchProposals[0].suggestedLines.length === 0 &&
-          mismatchProposals[0].summary.includes("50.00"),
+          mismatchProposals[0].summary.includes("₹50"),
         `expected 0 proposals when matched and 1 empty-line proposal citing the diff when mismatched, got ${proposals.length} and ${mismatchProposals.length}`
       );
     },

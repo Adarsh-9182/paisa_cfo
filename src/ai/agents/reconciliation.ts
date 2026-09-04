@@ -1,6 +1,7 @@
 import type { Ledger } from "../../ledger/ledger";
 import { Agent, proposal } from "../agent";
 import type { AgentProposal } from "../types";
+import { formatAmount } from "../../format";
 
 export interface ExternalBalance {
   accountId: string;
@@ -23,10 +24,11 @@ export class ReconciliationAgent extends Agent {
       const diff = external.reportedBalance - bookBalance;
 
       if (Math.round(diff * 100) !== 0) {
+        const accountName = ledger.getAccount(external.accountId)?.name ?? external.accountId;
         proposals.push(
           proposal(
             this.name,
-            `Account ${external.accountId} out of balance as of ${external.asOf}: book ${bookBalance}, external ${external.reportedBalance}, diff ${diff.toFixed(2)}`,
+            `${accountName} out of balance as of ${external.asOf}: books say ${formatAmount(bookBalance)}, statement says ${formatAmount(external.reportedBalance)}, a difference of ${formatAmount(diff)}`,
             [],
             0
           )

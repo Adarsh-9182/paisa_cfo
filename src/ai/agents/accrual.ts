@@ -1,6 +1,7 @@
 import type { Ledger } from "../../ledger/ledger";
 import { Agent, proposal } from "../agent";
 import type { AgentProposal } from "../types";
+import { formatAmount } from "../../format";
 
 export interface RecurringExpense {
   memo: string;
@@ -33,7 +34,7 @@ export class AccrualAgent extends Agent {
       proposals.push(
         proposal(
           this.name,
-          `Missing recurring expense "${item.memo}" for ${this.periodStart}..${this.periodEnd}; propose accrual of ${item.expectedAmount}`,
+          `Missing recurring expense "${item.memo}" for ${this.periodStart}..${this.periodEnd}; propose accrual of ${formatAmount(item.expectedAmount)}`,
           [
             { accountId: item.expenseAccountId, debit: item.expectedAmount, credit: 0 },
             { accountId: item.accruedLiabilityAccountId, debit: 0, credit: item.expectedAmount },
