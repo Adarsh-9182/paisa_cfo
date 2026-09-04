@@ -12,6 +12,10 @@ export class Ledger {
     this.accounts.set(account.id, account);
   }
 
+  getAccount(accountId: string): Account | undefined {
+    return this.accounts.get(accountId);
+  }
+
   getEntries(): readonly JournalEntry[] {
     return this.entries;
   }
@@ -78,6 +82,19 @@ export class Ledger {
   balanceOf(accountId: string): number {
     let balance = 0;
     for (const entry of this.entries) {
+      for (const line of entry.lines) {
+        if (line.accountId === accountId) {
+          balance += line.debit - line.credit;
+        }
+      }
+    }
+    return balance;
+  }
+
+  balanceAsOf(accountId: string, asOfDate: string): number {
+    let balance = 0;
+    for (const entry of this.entries) {
+      if (entry.date > asOfDate) continue;
       for (const line of entry.lines) {
         if (line.accountId === accountId) {
           balance += line.debit - line.credit;
