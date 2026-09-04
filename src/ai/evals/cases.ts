@@ -6,6 +6,8 @@ import { AccrualAgent } from "../agents/accrual";
 import { FluxAgent } from "../agents/flux";
 import { ReconciliationAgent } from "../agents/reconciliation";
 import { RevRecAgent } from "../agents/revrec";
+import { Books } from "../../books";
+import { InMemoryCommandStore } from "../../persistence/commands";
 import type { EvalCase } from "../eval";
 
 function expect(condition: boolean, message: string) {
@@ -245,6 +247,115 @@ export const evalCases: EvalCase[] = [
       return expect(
         beforeApproval.length === 1 && beforeApproval[0].suggestedLines[0].debit === 1000 && afterApproval.length === 0,
         `expected 1 proposal of 1000 before approval and 0 after, got ${beforeApproval.length} and ${afterApproval.length}`
+      );
+    },
+  },
+  {
+    name: "approval: posts the proposed entry once, attributed, and stays idempotent",
+    run: () => {
+      const accounts = [
+        { id: "cash", code: "1000", name: "Cash", type: "asset" as const },
+        { id: "rent-expense", code: "5200", name: "Rent Expense", type: "expense" as const },
+      ];
+      const books = new Books(accounts);
+
+      const approval = {
+        type: "approve-proposal" as const,
+        proposalId: "p-1",
+        agent: "accrual-agent",
+        summary: "Accrue September rent",
+        date: "2026-09-30",
+        lines: [
+          { accountId: "rent-expense", debit: 2000, credit: 0 },
+          { accountId: "cash", debit: 0, credit: 2000 },
+        ],
+        actor: "adarsh",
+        at: "2026-09-30T10:00:00.000Z",
+      };
+
+      books.exec(approval);
+      books.exec(approval);
+
+      const disposition = books.dispositionOf("p-1");
+      const entry = books.books.getEntries()[0];
+
+      return expect(
+        books.books.getEntries().length === 1 &&
+          disposition?.status === "approved" &&
+          entry.memo.includes("accrual-agent") &&
+          entry.memo.includes("adarsh") &&
+          books.books.balanceOf("rent-expense") === 2000,
+        `expected one attributed entry surviving a double approval, got ${books.books.getEntries().length} entries and disposition ${disposition?.status}`
+      );
+    },
+  },
+  {
+    name: "command log: replaying the log rebuilds identical state",
+    run: () => {
+      const accounts = [
+        { id: "cash", code: "1000", name: "Cash", type: "asset" as const },
+        { id: "revenue", code: "4000", name: "Revenue", type: "revenue" as const },
+      ];
+      const store = new InMemoryCommandStore();
+      const original = new Books(accounts, store);
+
+      original.exec({
+        type: "post-entry",
+        idempotencyKey: "sale-1",
+        date: "2026-09-01",
+        memo: "Cash sale",
+        lines: [
+          { accountId: "cash", debit: 5000, credit: 0 },
+          { accountId: "revenue", debit: 0, credit: 5000 },
+        ],
+        actor: "adarsh",
+        at: "2026-09-01T10:00:00.000Z",
+      });
+      original.exec({
+        type: "learn-category",
+        accountId: "revenue",
+        keyword: "stripe",
+        actor: "adarsh",
+        at: "2026-09-01T10:05:00.000Z",
+      });
+
+      // A fresh instance over the same log is the restart case: nothing is
+      // carried over in memory, so anything that survives came from the log.
+      const rebuilt = new Books(accounts, store);
+
+      return expect(
+        rebuilt.books.getEntries().length === original.books.getEntries().length &&
+          rebuilt.books.balanceOf("cash") === 5000 &&
+          rebuilt.books.balanceOf("revenue") === -5000 &&
+          rebuilt.rules.categorize("STRIPE PAYOUT")?.accountId === "revenue",
+        `expected replay to rebuild the ledger and the learned rules, got ${rebuilt.books.getEntries().length} entries, cash ${rebuilt.books.balanceOf("cash")}, rule ${JSON.stringify(rebuilt.rules.categorize("STRIPE PAYOUT"))}`
+      );
+    },
+  },
+  {
+    name: "approval: refuses an advisory proposal instead of posting an empty entry",
+    run: () => {
+      const books = new Books([{ id: "cash", code: "1000", name: "Cash", type: "asset" as const }]);
+
+      let refused = false;
+      try {
+        books.exec({
+          type: "approve-proposal",
+          proposalId: "advisory-1",
+          agent: "flux-agent",
+          summary: "Revenue moved a lot",
+          date: "2026-09-30",
+          lines: [],
+          actor: "adarsh",
+          at: "2026-09-30T10:00:00.000Z",
+        });
+      } catch {
+        refused = true;
+      }
+
+      return expect(
+        refused && books.books.getEntries().length === 0 && books.log().length === 0,
+        `expected the advisory approval to be refused and leave no entry or command, got refused=${refused}, entries=${books.books.getEntries().length}, log=${books.log().length}`
       );
     },
   },
