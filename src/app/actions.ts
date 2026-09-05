@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { buildDemoBooks } from "@/demo/books";
+import { bankEntryLines } from "@/ingestion/bank";
 import type { Command } from "@/persistence/commands";
 import { LOG_COOKIE, readUserCommands } from "./session";
 
@@ -76,6 +77,49 @@ export async function decideProposal(formData: FormData) {
   }
 
   revalidatePath("/");
+}
+
+/**
+ * Books a bank line the engine could not match, and optionally learns from it.
+ * The amount and direction are taken from the stored bank line rather than the
+ * form, so a hand-made POST can choose which account a line lands in but never
+ * how much money moves.
+ */
+export async function categorizeBankLine(formData: FormData) {
+  const bankLineId = String(formData.get("bankLineId") ?? "");
+  const accountId = String(formData.get("accountId") ?? "");
+  const keyword = String(formData.get("keyword") ?? "").trim().toLowerCase();
+  if (!bankLineId || !accountId) return;
+
+  const existing = await readUserCommands();
+  const books = buildDemoBooks(existing);
+
+  const booking = books.bookings.find((b) => b.line.id === bankLineId);
+  if (!booking || booking.autoBooked) return;
+  if (books.dispositions[`categorization:${bankLineId}`]) return;
+
+  // The account has to be one the books actually have, or the ledger would
+  // reject the entry after the command was already written to the log.
+  const account = books.accounts.find((a) => a.id === accountId);
+  if (!account) return;
+
+  await writeUserCommands([
+    ...existing,
+    {
+      type: "categorize-bank-line",
+      bankLineId,
+      accountId,
+      keyword: keyword.length > 2 ? keyword : null,
+      date: booking.line.date,
+      memo: booking.line.description,
+      lines: bankEntryLines(booking.line, accountId),
+      actor: ACTOR,
+      at: new Date().toISOString(),
+    },
+  ]);
+
+  revalidatePath("/");
+  revalidatePath("/bank");
 }
 
 export async function resetDemo() {

@@ -150,6 +150,30 @@ export class Books {
         this.categorizer.learn(command.accountId, command.keyword);
         return;
       }
+
+      case "categorize-bank-line": {
+        const entry = this.ledger.post({
+          date: command.date,
+          memo: command.memo,
+          lines: command.lines,
+          idempotencyKey: `bank:${command.bankLineId}`,
+        });
+
+        // Learning is what stops the same description coming back tomorrow.
+        // It is skipped when the human declined to name a keyword, because a
+        // bad rule is worse than no rule: it mis-books silently, forever.
+        if (command.keyword) {
+          this.categorizer.learn(command.accountId, command.keyword);
+        }
+
+        this.dispositions.set(`categorization:${command.bankLineId}`, {
+          status: "approved",
+          entryId: entry.id,
+          actor: command.actor,
+          at: command.at,
+        });
+        return;
+      }
     }
   }
 }

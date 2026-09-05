@@ -1,7 +1,7 @@
 import { Ledger } from "../../ledger/ledger";
 import type { Account } from "../../ledger/types";
-import { Categorizer } from "../../ingestion/categorize";
-import { BankBookingEngine, type BankLine } from "../../ingestion/bank";
+import { Categorizer, suggestKeyword } from "../../ingestion/categorize";
+import { BankBookingEngine, bankEntryLines, type BankLine } from "../../ingestion/bank";
 import { autoBookRate } from "../../ingestion/stats";
 import { AccrualAgent } from "../agents/accrual";
 import { FluxAgent } from "../agents/flux";
@@ -544,6 +544,103 @@ export const evalCases: EvalCase[] = [
           unknown.tool === null &&
           unknown.refusal !== undefined,
         `expected a cited rent answer and a refusal for the unanswerable question, got activity=${JSON.stringify(activity.result?.answer)}, citations=${activity.result?.citations.length}, unknownTool=${unknown.tool}`
+      );
+    },
+  },
+  {
+    name: "learning: categorising a line teaches a rule that books the next one",
+    run: () => {
+      const store = new InMemoryCommandStore();
+      const books = new Books(DEMO_ACCOUNTS, store);
+      const at = "2026-09-30T00:00:00.000Z";
+
+      const first: BankLine = {
+        id: "x1",
+        date: "2026-09-10",
+        description: "NEFT TRF 8827341 HETZNER",
+        amount: -5000,
+        cashAccountId: "cash",
+      };
+
+      // Nothing matches it yet, so it lands in review rather than the ledger.
+      const engine = new BankBookingEngine(books.rules);
+      const before = engine.decide(first);
+
+      const keyword = suggestKeyword(first.description);
+
+      books.exec({
+        type: "categorize-bank-line",
+        bankLineId: first.id,
+        accountId: "aws-expense",
+        keyword,
+        date: first.date,
+        memo: first.description,
+        lines: bankEntryLines(first, "aws-expense"),
+        actor: "you",
+        at,
+      });
+
+      // The same vendor next month must now book itself. That is the whole
+      // point: a correction the books forget is not learning, it is data entry.
+      const next: BankLine = { ...first, id: "x2", date: "2026-10-10", amount: -5200 };
+      const after = new BankBookingEngine(books.rules).decide(next);
+
+      // A replay has to rebuild the learned rule too, or the books would
+      // silently get dumber every restart.
+      const rebuilt = new Books(DEMO_ACCOUNTS, store);
+      const afterReplay = new BankBookingEngine(rebuilt.rules).decide(next);
+
+      return expect(
+        before.kind === "review" &&
+          keyword === "hetzner" &&
+          books.books.balanceOf("aws-expense") === 5000 &&
+          after.kind === "book" &&
+          afterReplay.kind === "book" &&
+          rebuilt.books.balanceOf("aws-expense") === 5000,
+        `expected the vendor to be learned and auto-booked afterwards, got keyword=${keyword}, before=${before.kind}, after=${after.kind}, afterReplay=${afterReplay.kind}`
+      );
+    },
+  },
+  {
+    name: "learning: a description with nothing distinctive teaches nothing",
+    run: () => {
+      const books = new Books(DEMO_ACCOUNTS);
+      const line: BankLine = {
+        id: "y1",
+        date: "2026-09-22",
+        description: "UPI/DR/4429/MISC",
+        amount: -1200,
+        cashAccountId: "cash",
+      };
+
+      // Every token here is either a reference number or banking boilerplate.
+      // Learning "upi" would book every future UPI transfer to this account.
+      const keyword = suggestKeyword(line.description);
+
+      books.exec({
+        type: "categorize-bank-line",
+        bankLineId: line.id,
+        accountId: "aws-expense",
+        keyword,
+        date: line.date,
+        memo: line.description,
+        lines: bankEntryLines(line, "aws-expense"),
+        actor: "you",
+        at: "2026-09-30T00:00:00.000Z",
+      });
+
+      const unrelated: BankLine = {
+        id: "y2",
+        date: "2026-10-01",
+        description: "UPI/DR/9910/MISC",
+        amount: -8000,
+        cashAccountId: "cash",
+      };
+      const next = new BankBookingEngine(books.rules).decide(unrelated);
+
+      return expect(
+        keyword === null && books.books.balanceOf("aws-expense") === 1200 && next.kind === "review",
+        `expected no keyword learned and the next UPI line still to need review, got keyword=${keyword}, next=${next.kind}`
       );
     },
   },
